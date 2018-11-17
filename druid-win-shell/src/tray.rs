@@ -381,6 +381,7 @@ impl TrayHandle {
                 }
                 UpdateWindow(hwnd);
                 InvalidateRect(hwnd, null(), FALSE);
+                SetForegroundWindow(hwnd);
             }
         }
     }

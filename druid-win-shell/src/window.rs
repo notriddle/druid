@@ -277,6 +277,7 @@ struct MyWndProc {
     handle: RefCell<WindowHandle>,
     d2d_factory: direct2d::Factory,
     state: RefCell<Option<WndState>>,
+    hide_on_unfocus: bool,
 }
 
 struct WndState {
@@ -568,6 +569,18 @@ impl WndProc for MyWndProc {
                 self.handler.destroy();
                 None
             }
+            WM_ACTIVATE => {
+                println!("hide_on_unfocus = {:?}", self.hide_on_unfocus);
+                println!("wparam = {:?}", wparam);
+                println!("WA_INACTIVE = {:?}", WA_INACTIVE);
+                if LOWORD(wparam as u32) == WA_INACTIVE && self.hide_on_unfocus {
+                    // when the flyout window loses focus, hide it.
+                    unsafe {
+                        ShowWindow(hwnd, SW_HIDE);
+                    }
+                }
+                None
+            }
             XI_RUN_IDLE => {
                 let queue = self.handle.borrow().take_idle_queue();
                 let handler_as_any = self.handler.as_any();
@@ -664,6 +677,7 @@ impl WindowBuilder {
                 handle: Default::default(),
                 d2d_factory: direct2d::Factory::new().unwrap(),
                 state: RefCell::new(None),
+                hide_on_unfocus: self.dwStyle & WS_CAPTION == 0,
             };
 
             let window = WindowState {
@@ -696,7 +710,7 @@ impl WindowBuilder {
             if self.present_strategy == PresentStrategy::Flip {
                 dwExStyle |= WS_EX_NOREDIRECTIONBITMAP;
             }
-            if self.dwStyle | WS_CAPTION == 0 {
+            if self.dwStyle & WS_CAPTION == 0 {
                 dwExStyle |= WS_EX_TOOLWINDOW;
             }
             let hwnd = create_window(dwExStyle, class_name.as_ptr(),
