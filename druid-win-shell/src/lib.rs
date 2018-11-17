@@ -25,6 +25,7 @@ mod dcomp;
 pub mod dialog;
 pub mod menu;
 pub mod paint;
+pub mod tray;
 pub mod util;
 pub mod win_main;
 pub mod window;

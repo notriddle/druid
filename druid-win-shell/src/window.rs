@@ -439,6 +439,9 @@ impl WndProc for MyWndProc {
                 None
             }
             WM_SIZE => unsafe {
+                if self.state.borrow().as_ref().is_none() {
+                    return None;
+                }
                 let width = LOWORD(lparam as u32) as u32;
                 let height = HIWORD(lparam as u32) as u32;
                 self.handler.size(width, height);
@@ -622,6 +625,11 @@ impl WindowBuilder {
         self.present_strategy = present_strategy;
     }
 
+    pub fn set_popout(&mut self) {
+        self.dwStyle &= !WS_OVERLAPPEDWINDOW;
+        self.dwStyle |= WS_POPUP;
+    }
+
     pub fn build(self)
         -> Result<WindowHandle, Error>
     {
@@ -687,6 +695,9 @@ impl WindowBuilder {
             let mut dwExStyle = 0;
             if self.present_strategy == PresentStrategy::Flip {
                 dwExStyle |= WS_EX_NOREDIRECTIONBITMAP;
+            }
+            if self.dwStyle | WS_CAPTION == 0 {
+                dwExStyle |= WS_EX_TOOLWINDOW;
             }
             let hwnd = create_window(dwExStyle, class_name.as_ptr(),
                 self.title.to_wide().as_ptr(), self.dwStyle,
@@ -855,6 +866,26 @@ impl WindowHandle {
                 ShowWindow(hwnd, SW_SHOWNORMAL);
                 UpdateWindow(hwnd);
             }
+        }
+    }
+
+    pub fn hide(&self) {
+        if let Some(w) = self.0.upgrade() {
+            let hwnd = w.hwnd.get();
+            unsafe {
+                ShowWindow(hwnd, SW_HIDE);
+            }
+        }
+    }
+
+    pub fn is_visible(&self) -> bool {
+        if let Some(w) = self.0.upgrade() {
+            let hwnd = w.hwnd.get();
+            unsafe {
+                IsWindowVisible(hwnd) != 0
+            }
+        } else {
+            false
         }
     }
 

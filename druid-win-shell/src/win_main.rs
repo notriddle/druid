@@ -78,7 +78,7 @@ impl RunLoop {
                     len,
                     handles.as_ptr(),
                     INFINITE,
-                    QS_ALLEVENTS,
+                    QS_ALLINPUT,
                     0
                 );
 
