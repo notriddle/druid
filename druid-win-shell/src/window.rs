@@ -831,7 +831,7 @@ unsafe extern "system" fn win_proc_dispatch(hwnd: HWND, msg: UINT, wparam: WPARA
     if msg == WM_CREATE {
         let create_struct = &*(lparam as *const CREATESTRUCTW);
         let wndproc_ptr = create_struct.lpCreateParams;
-        SetWindowLongPtrW(hwnd, GWLP_USERDATA, wndproc_ptr as LONG_PTR);
+        SetWindowLongPtrW(hwnd, GWLP_USERDATA, wndproc_ptr as _);
     }
     let window_ptr = GetWindowLongPtrW(hwnd, GWLP_USERDATA) as *const WindowState;
     let result = {
