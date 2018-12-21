@@ -105,9 +105,6 @@ pub struct IdleHandle {
     queue: Arc<Mutex<Vec<Box<IdleCallback>>>>,
 }
 
-unsafe impl Sync for IdleHandle {}
-unsafe impl Send for IdleHandle {}
-
 trait IdleCallback: Send {
     fn call(self: Box<Self>, a: &Any);
 }
@@ -989,6 +986,7 @@ impl WindowHandle {
 
 // There is a tiny risk of things going wrong when hwnd is sent across threads.
 unsafe impl Send for IdleHandle {}
+unsafe impl Sync for IdleHandle {}
 
 impl IdleHandle {
     /// Add an idle handler, which is called (once) when the message loop
