@@ -105,8 +105,8 @@ pub struct IdleHandle {
     queue: Arc<Mutex<Vec<Box<IdleCallback>>>>,
 }
 
-unsafe impl Sync for IdleHandle;
-unsafe impl Send for IdleHandle;
+unsafe impl Sync for IdleHandle {}
+unsafe impl Send for IdleHandle {}
 
 trait IdleCallback: Send {
     fn call(self: Box<Self>, a: &Any);
