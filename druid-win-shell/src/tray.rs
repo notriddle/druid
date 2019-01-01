@@ -41,7 +41,7 @@ use winapi::um::d2d1::*;
 use winapi::um::unknwnbase::*;
 use winapi::um::wingdi::*;
 use winapi::um::winnt::*;
-use winapi::um::winuser::{self, *, MAKEINTRESOURCEW};
+use winapi::um::winuser::{self, *};
 use winapi::um::shellapi::*;
 use winapi::shared::guiddef::{GUID, IID_NULL};
 use winapi::um::errhandlingapi::GetLastError;
@@ -58,7 +58,7 @@ use window::WindowHandle;
 /// Builder abstraction for creating new windows.
 pub struct TrayBuilder {
     title: String,
-    icon: String,
+    icon: u16,
     menu: Option<Menu>,
     tray_guid: GUID,
     tray_callback: Option<Box<TrayCallback>>,
@@ -105,7 +105,7 @@ struct WindowState {
     tray_guid: GUID,
     tray_shown: Cell<bool>,
     title: String,
-    icon: String,
+    icon: u16,
 }
 
 /// Generic handler trait for the winapi window procedure entry point.
@@ -138,7 +138,7 @@ impl WndProc for MyWndProc {
         match msg {
             WM_CREATE => unsafe {
                 if let Some(w) = self.handle.borrow().0.upgrade() {
-                    setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, &w.icon);
+                    setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, w.icon);
                 } else {
                     println!("WM_CREATE => WM_USER_NOTIFY_SETUP");
                     SetCoalescableTimer(hwnd, 0, 500, mem::zeroed(), TIMERV_DEFAULT_COALESCING);
@@ -148,7 +148,7 @@ impl WndProc for MyWndProc {
             WM_TIMER => {
                 if let Some(w) = self.handle.borrow().0.upgrade() {
                     if !w.tray_shown.get() {
-                        unsafe { setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, &w.icon); }
+                        unsafe { setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, w.icon); }
                     }
                 } else {
                     panic!("Handle should be set by the time the tray is set up!");
@@ -188,7 +188,7 @@ impl TrayBuilder {
     pub fn new() -> TrayBuilder {
         TrayBuilder {
             title: String::new(),
-            icon: String::new(),
+            icon: 0,
             menu: None,
             tray_guid: IID_NULL,
             tray_callback: None,
@@ -199,8 +199,8 @@ impl TrayBuilder {
         self.title = title.into();
     }
 
-    pub fn set_icon<S: Into<String>>(&mut self, icon: S) {
-        self.icon = icon.into();
+    pub fn set_icon(&mut self, icon: u16) {
+        self.icon = icon;
     }
 
     pub fn set_menu(&mut self, menu: Menu) {
@@ -223,7 +223,11 @@ impl TrayBuilder {
 
             // TODO: probably want configurable class name.
             let class_name = "Xi Tray".to_wide();
-            let icon = LoadIconW(0 as HINSTANCE, IDI_APPLICATION);
+            let mut icon = LoadIconW(0 as HINSTANCE, IDI_APPLICATION);
+            if self.icon != 0 {
+                let h_inst = GetModuleHandleW(ptr::null_mut());
+                LoadIconMetric(h_inst, MAKEINTRESOURCEW(self.icon), LIM_SMALL as i32, &mut icon);
+            }
             let brush = CreateSolidBrush(0xffffff);
             let wnd = WNDCLASSW {
                 style: 0,
@@ -280,20 +284,14 @@ impl TrayBuilder {
     }
 }
 
-unsafe fn setup_tray(hwnd: HWND, guid: GUID, tray_shown: &Cell<bool>, title: &str, icon: &str) {
+unsafe fn setup_tray(hwnd: HWND, guid: GUID, tray_shown: &Cell<bool>, title: &str, icon: u16) {
     assert!(!tray_shown.get());
     let mut u: NOTIFYICONDATAW_u = mem::zeroed();
     *u.uVersion_mut() = NOTIFYICON_VERSION_4;
     let mut h_icon = LoadIconW(ptr::null_mut(), IDI_APPLICATION);
-    if icon != "" {
-        let mut icon_name = icon.to_wide();
-        icon_name.push(0);
+    if icon != 0 {
         let h_inst = GetModuleHandleW(ptr::null_mut());
-        let mut new_icon = ptr::null_mut();
-        let result = LoadIconMetric(h_inst, icon_name.as_ptr(), LIM_SMALL as i32, &mut new_icon);
-        if result == S_OK {
-            h_icon = new_icon;
-        }
+        LoadIconMetric(h_inst, MAKEINTRESOURCEW(icon), LIM_SMALL as i32, &mut h_icon);
     }
     let mut n = NOTIFYICONDATAW {
         cbSize: mem::size_of::<NOTIFYICONDATAW>() as u32,
