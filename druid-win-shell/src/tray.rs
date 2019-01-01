@@ -41,20 +41,24 @@ use winapi::um::d2d1::*;
 use winapi::um::unknwnbase::*;
 use winapi::um::wingdi::*;
 use winapi::um::winnt::*;
-use winapi::um::winuser::{self, *};
+use winapi::um::winuser::{self, *, MAKEINTRESOURCEW};
 use winapi::um::shellapi::*;
 use winapi::shared::guiddef::{GUID, IID_NULL};
 use winapi::um::errhandlingapi::GetLastError;
 use winapi::um::winbase::{FORMAT_MESSAGE_FROM_SYSTEM, FormatMessageW};
+use winapi::um::commctrl::{LoadIconMetric, LIM_SMALL};
+use winapi::um::libloaderapi::GetModuleHandleW;
 
 use Error;
 use dialog::{FileDialogOptions, FileDialogType, get_file_dialog_path};
 use menu::Menu;
 use util::{OPTIONAL_FUNCTIONS, as_result, FromWide, ToWide};
 use window::WindowHandle;
+
 /// Builder abstraction for creating new windows.
 pub struct TrayBuilder {
     title: String,
+    icon: String,
     menu: Option<Menu>,
     tray_guid: GUID,
     tray_callback: Option<Box<TrayCallback>>,
@@ -101,6 +105,7 @@ struct WindowState {
     tray_guid: GUID,
     tray_shown: Cell<bool>,
     title: String,
+    icon: String,
 }
 
 /// Generic handler trait for the winapi window procedure entry point.
@@ -133,7 +138,7 @@ impl WndProc for MyWndProc {
         match msg {
             WM_CREATE => unsafe {
                 if let Some(w) = self.handle.borrow().0.upgrade() {
-                    setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title);
+                    setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, &w.icon);
                 } else {
                     println!("WM_CREATE => WM_USER_NOTIFY_SETUP");
                     SetCoalescableTimer(hwnd, 0, 500, mem::zeroed(), TIMERV_DEFAULT_COALESCING);
@@ -143,7 +148,7 @@ impl WndProc for MyWndProc {
             WM_TIMER => {
                 if let Some(w) = self.handle.borrow().0.upgrade() {
                     if !w.tray_shown.get() {
-                        unsafe { setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title); }
+                        unsafe { setup_tray(hwnd, w.tray_guid, &w.tray_shown, &w.title, &w.icon); }
                     }
                 } else {
                     panic!("Handle should be set by the time the tray is set up!");
@@ -183,6 +188,7 @@ impl TrayBuilder {
     pub fn new() -> TrayBuilder {
         TrayBuilder {
             title: String::new(),
+            icon: String::new(),
             menu: None,
             tray_guid: IID_NULL,
             tray_callback: None,
@@ -191,6 +197,10 @@ impl TrayBuilder {
 
     pub fn set_title<S: Into<String>>(&mut self, title: S) {
         self.title = title.into();
+    }
+
+    pub fn set_icon<S: Into<String>>(&mut self, icon: S) {
+        self.icon = icon.into();
     }
 
     pub fn set_menu(&mut self, menu: Menu) {
@@ -244,6 +254,7 @@ impl TrayBuilder {
                 tray_guid: self.tray_guid,
                 tray_shown: Cell::new(false),
                 title: self.title,
+                icon: self.icon,
             };
             let win = Rc::new(window);
             let handle = TrayHandle(Rc::downgrade(&win));
@@ -269,17 +280,28 @@ impl TrayBuilder {
     }
 }
 
-unsafe fn setup_tray(hwnd: HWND, guid: GUID, tray_shown: &Cell<bool>, title: &str) {
+unsafe fn setup_tray(hwnd: HWND, guid: GUID, tray_shown: &Cell<bool>, title: &str, icon: &str) {
     assert!(!tray_shown.get());
     let mut u: NOTIFYICONDATAW_u = mem::zeroed();
     *u.uVersion_mut() = NOTIFYICON_VERSION_4;
+    let mut h_icon = LoadIconW(ptr::null_mut(), IDI_APPLICATION);
+    if icon != "" {
+        let mut icon_name = icon.to_wide();
+        icon_name.push(0);
+        let h_inst = GetModuleHandleW(ptr::null_mut());
+        let mut new_icon = ptr::null_mut();
+        let result = LoadIconMetric(h_inst, icon_name.as_ptr(), LIM_SMALL as i32, &mut new_icon);
+        if result == S_OK {
+            h_icon = new_icon;
+        }
+    }
     let mut n = NOTIFYICONDATAW {
         cbSize: mem::size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: hwnd,
         uID: 1001,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_GUID | NIF_TIP | NIF_SHOWTIP,
         uCallbackMessage: WM_USER_NOTIFY_CALLBACK,
-        hIcon: LoadIconW(ptr::null_mut(), IDI_APPLICATION),
+        hIcon: h_icon,
         szTip: [0; 128],
         dwState: 0,
         dwStateMask: 0,
@@ -288,7 +310,7 @@ unsafe fn setup_tray(hwnd: HWND, guid: GUID, tray_shown: &Cell<bool>, title: &st
         szInfoTitle: [0; 64],
         dwInfoFlags: 0,
         guidItem: guid,
-        hBalloonIcon: LoadIconW(ptr::null_mut(), IDI_APPLICATION)
+        hBalloonIcon: h_icon
     };
     let tip: Vec<u16> = OsStr::new(title).encode_wide().collect();
     // assert that the tip text has space for the null terminator
